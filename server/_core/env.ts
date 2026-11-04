@@ -18,10 +18,10 @@ export const ENV = {
   aiProvider:
     process.env.AI_PROVIDER?.trim() ||
     (process.env.AI_API_URL?.includes("generativelanguage.googleapis.com") ||
-    (!process.env.AI_API_URL && !process.env.BUILT_IN_FORGE_API_KEY)
+      (!process.env.AI_API_URL && !process.env.BUILT_IN_FORGE_API_KEY)
       ? "google"
       : "openai-compatible"),
   aiApiUrl: process.env.AI_API_URL ?? "",
   aiApiKey: resolvedAiApiKey,
-  aiModel: process.env.AI_MODEL?.trim() || "gemini-2.5-flash",
+  aiModel: process.env.AI_MODEL?.trim() || "gemini-3.8-flash",
 };

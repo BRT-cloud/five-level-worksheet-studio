@@ -400,7 +400,11 @@ const fetchWithBackoff = async (
     : new Error("AI 서버 응답 시간이 초과되었거나 연결에 실패했습니다.");
 };
 
-const GEMINI_FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"] as const;
+const GEMINI_FALLBACK_MODELS = [
+  "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash",
+] as const;
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
@@ -475,7 +479,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
         maxOutputTokens: resolvedMaxTokens,
         responseMimeType:
           normalizedResponseFormat?.type === "json_schema" ||
-          normalizedResponseFormat?.type === "json_object"
+            normalizedResponseFormat?.type === "json_object"
             ? "application/json"
             : "text/plain",
         ...(normalizedResponseFormat?.type === "json_schema"
@@ -586,8 +590,8 @@ export async function listLLMModels(): Promise<ModelsResponse> {
   const url = ENV.aiApiUrl && ENV.aiApiUrl.trim().length > 0
     ? `${ENV.aiApiUrl.replace(/\/$/, "")}/models`
     : ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
-    : "https://forge.manus.im/v1/models";
+      ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
+      : "https://forge.manus.im/v1/models";
 
   const response = await fetchWithBackoff(url, {
     headers: { authorization: `Bearer ${resolveApiKey()}` },
