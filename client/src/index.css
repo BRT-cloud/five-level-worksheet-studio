@@ -1,0 +1,143 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #fff4ed;
+  --foreground: #181616;
+  --card: #fffdf9;
+  --card-foreground: #181616;
+  --popover: #fffdf9;
+  --popover-foreground: #181616;
+  --primary: #181616;
+  --primary-foreground: #fffdf9;
+  --secondary: #eef9ed;
+  --secondary-foreground: #181616;
+  --muted: #f6e6de;
+  --muted-foreground: #746b67;
+  --accent: #e5ddff;
+  --accent-foreground: #181616;
+  --destructive: #c54236;
+  --destructive-foreground: #fffdf9;
+  --border: #181616;
+  --input: #e7d5cc;
+  --ring: #181616;
+  --radius: 1.15rem;
+}
+
+* { border-color: var(--border); }
+
+html { background: #fff4ed; }
+
+body {
+  min-width: 320px;
+  background: #fff4ed;
+  color: #181616;
+  font-family: "Gowun Dodum", "DM Sans", sans-serif;
+  letter-spacing: -0.01em;
+}
+
+button, input, textarea { font: inherit; }
+
+.display-type {
+  font-family: "DM Sans", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.075em;
+}
+
+.memphis-surface {
+  background-color: #fff4ed;
+  background-image: radial-gradient(#1a1817 1.25px, transparent 1.25px);
+  background-size: 20px 20px;
+}
+
+.memphis-shape { position: absolute; pointer-events: none; }
+.shape-circle { border-radius: 999px; }
+.shape-triangle { width: 0; height: 0; border-left: 42px solid transparent; border-right: 42px solid transparent; border-bottom: 76px solid #c8b7ff; transform: rotate(14deg); }
+.shape-diamond { width: 18px; height: 18px; background: #181616; transform: rotate(45deg); }
+.shape-squiggle { font: 700 42px/1 "DM Sans"; letter-spacing: -8px; color: #181616; transform: rotate(-16deg); }
+
+.black-border { border: 2px solid #181616; }
+.hard-shadow { box-shadow: 5px 5px 0 #181616; }
+.hard-shadow-sm { box-shadow: 3px 3px 0 #181616; }
+.paper-shadow { box-shadow: 8px 8px 0 rgba(24, 22, 22, 0.13); }
+
+.welcome-screen {
+  background: #fff4ed;
+  background-image: radial-gradient(#1a1817 1.25px, transparent 1.25px);
+  background-size: 20px 20px;
+}
+.welcome-title { text-wrap: balance; }
+.welcome-fade-in { animation: welcome-rise 700ms cubic-bezier(.23,1,.32,1) both; }
+.welcome-fade-in:nth-of-type(2) { animation-delay: 90ms; }
+.welcome-fade-in:nth-of-type(3) { animation-delay: 160ms; }
+.welcome-fade-in:nth-of-type(4) { animation-delay: 230ms; }
+.welcome-mascot { animation: welcome-float 3.2s ease-in-out infinite; }
+.welcome-enter { animation: welcome-pulse 2.2s ease-in-out infinite; }
+.welcome-orb { position: absolute; border: 2px solid #181616; border-radius: 999px; pointer-events: none; }
+.welcome-orb-one { width: 150px; height: 150px; top: 12%; left: 8%; background: #bfe8dc; animation: welcome-float 4s ease-in-out infinite reverse; }
+.welcome-orb-two { width: 92px; height: 92px; right: 11%; bottom: 14%; background: #e5ddff; animation: welcome-float 3.5s ease-in-out infinite; }
+.welcome-star { position: absolute; font-size: 2rem; animation: welcome-twinkle 1.8s ease-in-out infinite; }
+.star-one { top: 24%; right: 20%; }
+.star-two { bottom: 25%; left: 18%; animation-delay: .7s; }
+.welcome-doodle { position: absolute; font: 700 2.5rem/1 "DM Sans"; transform: rotate(-14deg); }
+.doodle-one { left: 9%; bottom: 18%; letter-spacing: -7px; }
+.doodle-two { right: 8%; top: 20%; transform: rotate(18deg); }
+@keyframes welcome-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes welcome-float { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-10px) rotate(3deg); } }
+@keyframes welcome-pulse { 0%, 100% { box-shadow: 4px 4px 0 #181616; } 50% { box-shadow: 4px 7px 0 #181616; } }
+@keyframes welcome-twinkle { 0%, 100% { opacity: .35; transform: scale(.8) rotate(0); } 50% { opacity: 1; transform: scale(1.2) rotate(18deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-fade-in, .welcome-mascot, .welcome-enter, .welcome-orb, .welcome-star { animation: none; }
+}
+
+.level-card { transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 180ms cubic-bezier(0.23, 1, 0.32, 1); }
+.level-card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #181616; }
+.level-card:focus-within { outline: 3px solid #181616; outline-offset: 4px; }
+.level-card textarea, .level-card input { outline: none; }
+.level-card textarea:focus, .level-card input:focus { background: #fffdf3; box-shadow: inset 0 -2px 0 #181616; }
+
+.a4-paper textarea, .a4-paper input { outline: none; }
+.a4-paper textarea:focus, .a4-paper input:focus { background: #fffdf3; box-shadow: inset 0 -2px 0 #181616; }
+
+@media print {
+  @page { size: A4; margin: 16mm; }
+  body { background: #fff !important; font-family: "Gowun Dodum", sans-serif; }
+  .no-print, [data-sidebar="sidebar"], [data-sidebar="rail"], .studio-header, .memphis-shape { display: none !important; }
+  .memphis-surface { background: #fff !important; border: 0 !important; }
+  .print-workspace { padding: 0 !important; border: 0 !important; }
+  .worksheet-card { display: none !important; box-shadow: none !important; border: 0 !important; }
+  .worksheet-card.print-target { display: block !important; width: 100% !important; max-width: 100% !important; min-height: 0 !important; padding: 0 !important; }
+  .worksheet-card.print-target .worksheet-header { display: block !important; }
+  .worksheet-card.print-target .editor-controls { display: none !important; }
+  .worksheet-card.print-target .teacher-guide:not(.print-guide) { display: none !important; }
+  .worksheet-card.print-target .teacher-guide.print-guide { display: block !important; break-before: page; border: 1px solid #000 !important; background: #fff !important; }
+  .worksheet-card.print-target textarea, .worksheet-card.print-target input { border: 0 !important; background: transparent !important; resize: none !important; box-shadow: none !important; overflow: visible !important; }
+}
