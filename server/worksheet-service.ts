@@ -82,7 +82,7 @@ export async function generateFiveLevelWorksheets(input: {
 
   const response = await invokeLLM({
     model: undefined,
-    maxTokens: 16384,
+    maxTokens: 8192,
     messages: baseMessages,
     response_format: {
       type: "json_schema",
@@ -101,7 +101,7 @@ export async function generateFiveLevelWorksheets(input: {
     // One automatic repair retry if the initial JSON output was truncated or failed schema validation
     const repairResponse = await invokeLLM({
       model: undefined,
-      maxTokens: 16384,
+      maxTokens: 8192,
       messages: [
         ...baseMessages,
         { role: "assistant", content: content.slice(0, 6000) },

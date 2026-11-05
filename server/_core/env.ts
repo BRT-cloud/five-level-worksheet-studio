@@ -23,5 +23,5 @@ export const ENV = {
       : "openai-compatible"),
   aiApiUrl: process.env.AI_API_URL ?? "",
   aiApiKey: resolvedAiApiKey,
-  aiModel: process.env.AI_MODEL?.trim() || "gemini-3.8-flash",
+  aiModel: process.env.AI_MODEL?.trim() || "gemini-2.5-flash-lite",
 };

@@ -60,24 +60,20 @@ export type InvokeParams = {
   tools?: Tool[];
   toolChoice?: ToolChoice;
   tool_choice?: ToolChoice;
-  maxTokens?: number;
-  max_tokens?: number;
   outputSchema?: OutputSchema;
   output_schema?: OutputSchema;
   responseFormat?: ResponseFormat;
   response_format?: ResponseFormat;
   model?: string;
-  thinking?: Record<string, unknown>;
-  reasoning?: Record<string, unknown>;
-};
-
-export type ToolCall = {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: string;
+  thinking?: {
+    type: "enabled";
+    budget_tokens?: number;
   };
+  reasoning?: {
+    effort?: "low" | "medium" | "high";
+  };
+  maxTokens?: number;
+  max_tokens?: number;
 };
 
 export type InvokeResult = {
@@ -87,17 +83,11 @@ export type InvokeResult = {
   choices: Array<{
     index: number;
     message: {
-      role: Role;
-      content: string | Array<TextContent | ImageContent | FileContent>;
-      tool_calls?: ToolCall[];
+      role: "assistant";
+      content: string;
     };
-    finish_reason: string | null;
+    finish_reason: string;
   }>;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
 };
 
 export type JsonSchema = {
@@ -140,57 +130,95 @@ const normalizeMessage = (message: Message) => {
       .join("\n");
 
     return {
-      role,
+      role: "tool" as const,
+      content,
       name,
       tool_call_id,
-      content,
     };
   }
 
-  const contentParts = ensureArray(message.content).map(normalizeContentPart);
-
-  if (contentParts.length === 1 && contentParts[0].type === "text") {
-    return {
-      role,
-      name,
-      content: contentParts[0].text,
-    };
-  }
-
+  const parts = ensureArray(message.content).map(normalizeContentPart);
   return {
     role,
     name,
-    content: contentParts,
+    tool_call_id,
+    content: parts.length === 1 && parts[0]?.type === "text" ? parts[0].text : parts,
   };
+};
+
+export const toGeminiContents = (messages: Message[]) => {
+  return messages
+    .filter(m => m.role !== "system")
+    .map(message => {
+      const parts = ensureArray(message.content).map(part => {
+        if (typeof part === "string") {
+          return { text: part };
+        }
+        if (part.type === "text") {
+          return { text: part.text };
+        }
+        if (part.type === "image_url") {
+          const raw = part.image_url.url;
+          const match = raw.match(/^data:([^;]+);base64,(.+)$/);
+          if (match && match[1] && match[2]) {
+            return {
+              inlineData: {
+                mimeType: match[1],
+                data: match[2],
+              },
+            };
+          }
+          return { text: `[이미지 URL: ${raw}]` };
+        }
+        if (part.type === "file_url") {
+          const raw = part.file_url.url;
+          const match = raw.match(/^data:([^;]+);base64,(.+)$/);
+          if (match && match[1] && match[2]) {
+            return {
+              inlineData: {
+                mimeType: part.file_url.mime_type || match[1],
+                data: match[2],
+              },
+            };
+          }
+          return { text: `[파일 URL: ${raw}]` };
+        }
+        return { text: "" };
+      });
+
+      return {
+        role: message.role === "assistant" ? "model" : "user",
+        parts,
+      };
+    });
 };
 
 const normalizeToolChoice = (
   toolChoice: ToolChoice | undefined,
   tools: Tool[] | undefined
-): "none" | "auto" | ToolChoiceExplicit | undefined => {
+): Record<string, unknown> | undefined => {
   if (!toolChoice) return undefined;
 
-  if (toolChoice === "none" || toolChoice === "auto") {
+  if (toolChoice === "none" || toolChoice === "required") {
+    return { type: toolChoice };
+  }
+
+  if (toolChoice === "auto") {
+    if (tools && tools.length > 0) {
+      return {
+        type: "function",
+        function: { name: tools[0].function.name },
+      };
+    }
+    return { type: "auto" };
+  }
+
+  if ("type" in toolChoice && toolChoice.type === "function") {
     return toolChoice;
   }
 
-  if (toolChoice === "required") {
-    if (!tools || tools.length === 0) {
-      throw new Error(
-        "tool_choice 'required' was provided but no tools were configured"
-      );
-    }
-
-    if (tools.length > 1) {
-      throw new Error(
-        "tool_choice 'required' needs a single tool or specify the tool name explicitly"
-      );
-    }
-
-    return {
-      type: "function",
-      function: { name: tools[0].function.name },
-    };
+  if (!tools || tools.length === 0) {
+    return undefined;
   }
 
   if ("name" in toolChoice) {
@@ -241,31 +269,6 @@ export function toGeminiSchema(schema: Record<string, unknown>): Record<string, 
   return result;
 }
 
-export function toGeminiContents(messages: Message[]) {
-  return messages.filter(message => message.role !== "system").map(message => ({
-    role: message.role === "assistant" ? "model" : "user",
-    parts: ensureArray(message.content).map(part => {
-      if (typeof part === "string") return { text: part };
-      if (part.type === "text") return { text: part.text };
-      if (part.type === "image_url") {
-        const match = part.image_url.url.match(/^data:([^;]+);base64,([\s\S]+)$/);
-        if (!match) {
-          throw new Error("이미지 파일은 base64 data URL 형식으로 전달되어야 합니다.");
-        }
-        return { inlineData: { mimeType: match[1], data: match[2].replace(/\s+/g, "") } };
-      }
-      if (part.type === "file_url") {
-        const match = part.file_url.url.match(/^data:([^;]+);base64,([\s\S]+)$/);
-        if (!match) {
-          throw new Error("문서 파일은 base64 data URL 형식으로 전달되어야 합니다.");
-        }
-        return { inlineData: { mimeType: match[1], data: match[2].replace(/\s+/g, "") } };
-      }
-      return { text: "" };
-    }),
-  }));
-}
-
 const normalizeResponseFormat = ({
   responseFormat,
   response_format,
@@ -276,17 +279,10 @@ const normalizeResponseFormat = ({
   response_format?: ResponseFormat;
   outputSchema?: OutputSchema;
   output_schema?: OutputSchema;
-}):
-  | { type: "json_schema"; json_schema: JsonSchema }
-  | { type: "text" }
-  | { type: "json_object" }
-  | undefined => {
+}): ResponseFormat | undefined => {
   const explicitFormat = responseFormat || response_format;
   if (explicitFormat) {
-    if (
-      explicitFormat.type === "json_schema" &&
-      !explicitFormat.json_schema?.schema
-    ) {
+    if (explicitFormat.type === "json_schema" && !explicitFormat.json_schema?.schema) {
       throw new Error(
         "responseFormat json_schema requires a defined schema object"
       );
@@ -354,13 +350,15 @@ function sanitizeErrorDetail(raw: string): string {
 
 const fetchWithBackoff = async (
   url: string,
-  init: FetchInit
+  init: FetchInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  maxRetries = RETRY_MAX_RETRIES
 ): Promise<Response> => {
   let lastError: unknown;
 
-  for (let attempt = 0; attempt <= RETRY_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, {
         ...init,
@@ -368,7 +366,7 @@ const fetchWithBackoff = async (
       });
       clearTimeout(timeoutId);
 
-      if (response.ok || !isRetryableStatus(response.status) || attempt === RETRY_MAX_RETRIES) {
+      if (response.ok || !isRetryableStatus(response.status) || attempt === maxRetries) {
         return response;
       }
 
@@ -381,15 +379,15 @@ const fetchWithBackoff = async (
         // Body already settled
       }
       console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after status ${response.status}`
+        `LLM request retry ${attempt + 1}/${maxRetries} after status ${response.status}`
       );
       await sleep(computeBackoffDelay(attempt, retryAfterMs));
     } catch (error) {
       clearTimeout(timeoutId);
       lastError = error;
-      if (attempt === RETRY_MAX_RETRIES) throw error;
+      if (attempt === maxRetries) throw error;
       console.warn(
-        `LLM request retry ${attempt + 1}/${RETRY_MAX_RETRIES} after network error`
+        `LLM request retry ${attempt + 1}/${maxRetries} after network error`
       );
       await sleep(computeBackoffDelay(attempt));
     }
@@ -400,11 +398,84 @@ const fetchWithBackoff = async (
     : new Error("AI 서버 응답 시간이 초과되었거나 연결에 실패했습니다.");
 };
 
-const GEMINI_FALLBACK_MODELS = [
-  "gemini-3.8-flash",
-  "gemini-3.5-flash-lite",
+export const GEMINI_FALLBACK_MODELS = [
+  "gemini-2.5-flash-lite",
   "gemini-2.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.8-flash",
+  "gemini-flash-latest",
+  "gemini-flash-lite-latest",
 ] as const;
+
+// Cached dynamic model discovery to guarantee safety against future Google deprecations
+let discoveredGeminiModels: string[] | null = null;
+let lastDiscoveryTime = 0;
+const DISCOVERY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function discoverActiveGeminiModels(apiKey: string): Promise<string[]> {
+  const now = Date.now();
+  if (discoveredGeminiModels && now - lastDiscoveryTime < DISCOVERY_CACHE_TTL_MS) {
+    return discoveredGeminiModels;
+  }
+  try {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(endpoint);
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+    };
+    if (!data.models) return [];
+    const active = data.models
+      .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+      .map(m => (m.name || "").replace(/^models\//, ""))
+      .filter(name => name.includes("flash"));
+
+    if (active.length > 0) {
+      discoveredGeminiModels = active;
+      lastDiscoveryTime = now;
+      return active;
+    }
+  } catch {
+    // Dynamic discovery is best-effort
+  }
+  return [];
+}
+
+export function buildGeminiPayload(
+  messages: Message[],
+  resolvedMaxTokens: number | undefined,
+  normalizedResponseFormat: ResponseFormat | undefined
+) {
+  const system = messages.find(message => message.role === "system");
+  const basePayload: Record<string, unknown> = {
+    contents: toGeminiContents(messages),
+    generationConfig: {
+      maxOutputTokens: resolvedMaxTokens,
+      responseMimeType:
+        normalizedResponseFormat?.type === "json_schema" ||
+        normalizedResponseFormat?.type === "json_object"
+          ? "application/json"
+          : "text/plain",
+      ...(normalizedResponseFormat?.type === "json_schema"
+        ? { responseSchema: toGeminiSchema(normalizedResponseFormat.json_schema.schema) }
+        : {}),
+    },
+  };
+
+  if (system) {
+    basePayload.systemInstruction = {
+      parts: [
+        {
+          text: ensureArray(system.content)
+            .map(part => (typeof part === "string" ? part : part.type === "text" ? part.text : ""))
+            .join("\n"),
+        },
+      ],
+    };
+  }
+
+  return basePayload;
+}
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
@@ -469,54 +540,93 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   }
 
   if (isGoogleProvider()) {
-    const system = messages.find(message => message.role === "system");
-    const geminiPayload = {
-      systemInstruction: system ? {
-        parts: [{ text: ensureArray(system.content).map(part => typeof part === "string" ? part : part.type === "text" ? part.text : "").join("\n") }],
-      } : undefined,
-      contents: toGeminiContents(messages),
-      generationConfig: {
-        maxOutputTokens: resolvedMaxTokens,
-        responseMimeType:
-          normalizedResponseFormat?.type === "json_schema" ||
-            normalizedResponseFormat?.type === "json_object"
-            ? "application/json"
-            : "text/plain",
-        ...(normalizedResponseFormat?.type === "json_schema"
-          ? { responseSchema: toGeminiSchema(normalizedResponseFormat.json_schema.schema) }
-          : {}),
-      },
-    };
+    const apiKey = resolveApiKey();
+    const geminiPayload = buildGeminiPayload(messages, resolvedMaxTokens, normalizedResponseFormat);
     const googleBase = (ENV.aiApiUrl || "https://generativelanguage.googleapis.com/v1beta/models").replace(/\/$/, "");
-    const primaryModel = model || ENV.aiModel || "gemini-2.5-flash";
-    const candidateModels = Array.from(new Set([primaryModel, ...GEMINI_FALLBACK_MODELS]));
+    const primaryModel = model || ENV.aiModel || "gemini-2.5-flash-lite";
+
+    // 1. Gather all candidate models in priority order
+    let candidateModels = Array.from(new Set([primaryModel, ...GEMINI_FALLBACK_MODELS]));
 
     let response: Response | null = null;
     let activeModel = primaryModel;
+    let lastErrorDetail = "";
 
+    // 2. Iterate through models with quick per-attempt failover on 503, 429, 404, 5xx, or timeouts
     for (let i = 0; i < candidateModels.length; i++) {
       activeModel = candidateModels[i];
-      const endpoint = `${googleBase}/${activeModel}:generateContent?key=${encodeURIComponent(resolveApiKey())}`;
-      response = await fetchWithBackoff(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(geminiPayload),
-      });
-      // Only try fallback model when the requested model ID is not found (404)
-      if (response.status !== 404 || i === candidateModels.length - 1) {
+      const endpoint = `${googleBase}/${activeModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+      // Apply fast 20s timeout per model attempt to prevent Vercel serverless freeze
+      try {
+        response = await fetchWithBackoff(
+          endpoint,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(geminiPayload),
+          },
+          20_000,
+          0 // 0 retries on the same model: failover immediately to sibling model on congestion
+        );
+      } catch (networkOrTimeoutErr) {
+        lastErrorDetail = networkOrTimeoutErr instanceof Error ? networkOrTimeoutErr.message : "Request timeout";
+        console.warn(`[LLM] Gemini model '${activeModel}' timed out / connection failed (${lastErrorDetail}); rotating to next model.`);
+        response = null;
+      }
+
+      // If response is successful (200), proceed immediately
+      if (response && response.ok) {
         break;
       }
-      try {
-        await response.body?.cancel();
-      } catch {
-        // ignore
+
+      // If status indicates temporary congestion (503), rate limit (429), not found (404), or server error (500/502/504)
+      const status = response?.status;
+      const shouldFailover =
+        response === null ||
+        status === 503 ||
+        status === 429 ||
+        status === 404 ||
+        status === 500 ||
+        status === 502 ||
+        status === 504 ||
+        status === 400; // Catch 400 for model-specific configuration rejections
+
+      if (shouldFailover) {
+        if (response) {
+          try {
+            const body = await response.text();
+            lastErrorDetail = body;
+            await response.body?.cancel();
+          } catch {
+            // ignore
+          }
+        }
+        const nextModel = candidateModels[i + 1];
+        if (nextModel) {
+          console.warn(`[LLM] Gemini model '${activeModel}' returned status ${status ?? "TIMEOUT"}; failover immediately to '${nextModel}'`);
+          continue;
+        }
+
+        // 3. Dynamic discovery safety net: if all predefined models failed with 404/503, query Google's live model list
+        if (i === candidateModels.length - 1) {
+          const liveModels = await discoverActiveGeminiModels(apiKey);
+          const unattempted = liveModels.filter(m => !candidateModels.includes(m));
+          if (unattempted.length > 0) {
+            console.warn(`[LLM] Static models exhausted; dynamically discovered active models: ${unattempted.join(", ")}`);
+            candidateModels = candidateModels.concat(unattempted);
+            continue;
+          }
+        }
       }
-      console.warn(`[LLM] Gemini model '${activeModel}' returned 404; falling back to '${candidateModels[i + 1]}'`);
+
+      // For non-failover client errors (e.g. 401/403 invalid key, 402 billing), stop and surface
+      break;
     }
 
     if (!response || !response.ok) {
       const status = response?.status ?? 502;
-      const body = response ? await response.text() : "";
+      const body = response ? await response.text() : lastErrorDetail;
       let detail = body;
       try {
         const parsed = JSON.parse(body) as { error?: { message?: string } };
@@ -527,7 +637,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       throw new Error(`Gemini API 오류 (${status}): ${sanitizeErrorDetail(detail)}`);
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       candidates?: Array<{
         content?: { parts?: Array<{ text?: string }> };
         finishReason?: string;
@@ -538,11 +648,13 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
       id: crypto.randomUUID(),
       created: Date.now(),
       model: activeModel,
-      choices: [{
-        index: 0,
-        message: { role: "assistant", content: text },
-        finish_reason: data.candidates?.[0]?.finishReason ?? "stop",
-      }],
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: text },
+          finish_reason: data.candidates?.[0]?.finishReason ?? "stop",
+        },
+      ],
     };
   }
 
@@ -587,11 +699,12 @@ export type ModelsResponse = {
 export async function listLLMModels(): Promise<ModelsResponse> {
   assertApiKey();
 
-  const url = ENV.aiApiUrl && ENV.aiApiUrl.trim().length > 0
-    ? `${ENV.aiApiUrl.replace(/\/$/, "")}/models`
-    : ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-      ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
-      : "https://forge.manus.im/v1/models";
+  const url =
+    ENV.aiApiUrl && ENV.aiApiUrl.trim().length > 0
+      ? `${ENV.aiApiUrl.replace(/\/$/, "")}/models`
+      : ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
+        ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/models`
+        : "https://forge.manus.im/v1/models";
 
   const response = await fetchWithBackoff(url, {
     headers: { authorization: `Bearer ${resolveApiKey()}` },
