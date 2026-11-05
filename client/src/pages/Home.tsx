@@ -153,6 +153,13 @@ function WorksheetStudio() {
   const [includeAnswerGuide, setIncludeAnswerGuide] = useState(false);
   const [activeLevel, setActiveLevel] = useState<WorksheetLevelName>("보통");
   const [isPreparingFile, setIsPreparingFile] = useState(false);
+  const [lastUploadPayload, setLastUploadPayload] = useState<{
+    name: string;
+    mimeType: string;
+    base64: string;
+    sourceText?: string;
+  } | null>(null);
+  const [lastErrorMessage, setLastErrorMessage] = useState<string | null>(null);
 
   const loadBrowserLibrary = useCallback(async (selectFirstIfEmpty = false) => {
     setIsLibraryLoading(true);
@@ -188,13 +195,18 @@ function WorksheetStudio() {
   const generateMutation = trpc.worksheets.generate.useMutation({
     onSuccess: async worksheet => {
       if (!worksheet) return;
+      setLastErrorMessage(null);
+      setLastUploadPayload(null);
       const saved = await saveStoredWorksheet(worksheet as unknown as StoredWorksheet);
       const updatedList = await listStoredWorksheets();
       setLibrary(updatedList);
       setSelectedId(saved.id);
       toast.success("5개 수준별 학습지를 생성해 브라우저 보관함에 저장했어요.");
     },
-    onError: error => toast.error(error.message),
+    onError: error => {
+      setLastErrorMessage(error.message);
+      toast.error(error.message);
+    },
   });
 
   const saveMutation = trpc.worksheets.saveLevel.useMutation();
@@ -249,8 +261,10 @@ function WorksheetStudio() {
 
   async function handleFileSelect(file: File) {
     setIsPreparingFile(true);
+    setLastErrorMessage(null);
     try {
       const prepared = await prepareWorksheetFileUpload(file);
+      setLastUploadPayload(prepared);
       generateMutation.mutate(prepared);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "파일을 처리하지 못했습니다.");
@@ -260,12 +274,20 @@ function WorksheetStudio() {
   }
 
   function handleDirectTextSubmit(title: string, text: string) {
+    setLastErrorMessage(null);
     try {
       const prepared = prepareDirectTextUpload(title, text);
+      setLastUploadPayload(prepared);
       generateMutation.mutate(prepared);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "입력 내용을 확인해 주세요.");
     }
+  }
+
+  function handleRetryLastUpload() {
+    if (!lastUploadPayload) return;
+    setLastErrorMessage(null);
+    generateMutation.mutate(lastUploadPayload);
   }
 
   async function handleLoadSample() {
@@ -532,6 +554,35 @@ function WorksheetStudio() {
         </aside>
 
         <main className="order-1 min-w-0 xl:order-2">
+          {!selectedWorksheet && !isBusy && lastErrorMessage && lastUploadPayload && (
+            <div className="mb-5 flex flex-col gap-3 rounded-[1.4rem] border-2 border-black bg-[#ffd2be] p-4 hard-shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-black">학습지 변환에 일시적인 지연 또는 오류가 발생했습니다.</p>
+                <p className="text-xs text-black/75">
+                  &lsquo;{lastUploadPayload.name}&rsquo; 파일이 준비되어 있습니다. 파일을 다시 선택할 필요 없이 즉시 다시 요청할 수 있습니다.
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={handleRetryLastUpload}
+                  className="rounded-full border-2 border-black bg-black px-4 text-xs font-bold text-white hover:bg-black/80"
+                >
+                  <WandSparkles className="mr-1.5 size-3.5" />
+                  방금 파일로 즉시 다시 시도
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setLastErrorMessage(null)}
+                  className="rounded-full border-2 border-black bg-white px-3 text-xs font-bold hover:bg-black/10"
+                >
+                  닫기
+                </Button>
+              </div>
+            </div>
+          )}
+
           {!selectedWorksheet && !isBusy && (
             <UploadPanel
               isDragging={isDragging}
